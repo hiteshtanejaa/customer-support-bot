@@ -1,0 +1,20 @@
+# Environment & secrets
+.env
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Database (auto-created on Railway)
+leads.db
+
+# IDE
+.vscode/
+.idea/

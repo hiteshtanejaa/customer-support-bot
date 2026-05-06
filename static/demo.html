@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ShopBot — Demo</title>
+  <link rel="stylesheet" href="/static/demo.css" />
+</head>
+<body>
+
+  <!-- Top Nav -->
+  <header class="topnav">
+    <div class="topnav-left">
+      <a href="/" class="back-link">← Portfolio</a>
+      <span class="divider">|</span>
+      <span class="brand">💬 ShopBot</span>
+    </div>
+    <div class="topnav-right">
+      <span class="ai-badge">⚡ GPT-4o + LangGraph</span>
+    </div>
+  </header>
+
+  <!-- Tab bar -->
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="admin">
+      📊 Admin Dashboard
+    </button>
+    <button class="tab-btn" data-tab="store">
+      🛍️ Store
+    </button>
+  </div>
+
+  <!-- ══ TAB 1: Admin Dashboard ══ -->
+  <div id="tab-admin" class="tab-panel active">
+    <main class="main">
+
+      <!-- Stats row -->
+      <section class="stats-row">
+        <div class="stat-card">
+          <div class="stat-icon">📦</div>
+          <div>
+            <div class="stat-value" id="stat-orders">—</div>
+            <div class="stat-label">Total Orders</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">💰</div>
+          <div>
+            <div class="stat-value" id="stat-revenue">—</div>
+            <div class="stat-label">Total Revenue</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">⏳</div>
+          <div>
+            <div class="stat-value" id="stat-pending">—</div>
+            <div class="stat-label">Pending Orders</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">✅</div>
+          <div>
+            <div class="stat-value" id="stat-delivered">—</div>
+            <div class="stat-label">Delivered</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">👥</div>
+          <div>
+            <div class="stat-value" id="stat-customers">—</div>
+            <div class="stat-label">Customers</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tables -->
+      <div class="tables-grid">
+
+        <section class="table-section">
+          <div class="table-header">
+            <h2>Recent Orders</h2>
+            <span class="table-count" id="orders-count"></span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Order ID</th><th>Customer</th><th>Product</th>
+                  <th>Amount</th><th>Date</th><th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="orders-body">
+                <tr><td colspan="6" class="loading">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="table-section">
+          <div class="table-header">
+            <h2>Customers</h2>
+            <span class="table-count" id="customers-count"></span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th><th>Email</th><th>Location</th>
+                  <th>Joined</th><th>Orders</th><th>Total Spent</th>
+                </tr>
+              </thead>
+              <tbody id="customers-body">
+                <tr><td colspan="6" class="loading">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div><!-- /tab-admin -->
+
+  <!-- ══ TAB 2: Store ══ -->
+  <div id="tab-store" class="tab-panel">
+
+    <!-- Store inner nav -->
+    <nav class="store-nav">
+      <span class="store-logo">VOGUE<em>THREAD</em></span>
+      <div class="store-links">
+        <button class="store-filter active" data-filter="all">All</button>
+        <button class="store-filter" data-filter="Men's">Men's</button>
+        <button class="store-filter" data-filter="Women's">Women's</button>
+        <button class="store-filter" data-filter="Accessories">Accessories</button>
+        <button class="store-filter sale-link" data-filter="Sale">Sale</button>
+      </div>
+      <div class="store-cart-btn">
+        🛒 <span id="cart-count">0</span>
+      </div>
+    </nav>
+
+    <!-- Hero banner -->
+    <div class="store-hero">
+      <div class="store-hero-inner">
+        <span class="store-hero-tag">New Collection</span>
+        <h2>Spring / Summer 2025</h2>
+        <p>Fresh styles, timeless fits. Explore our latest arrivals.</p>
+        <button class="store-hero-btn" data-filter="all">Shop Now</button>
+      </div>
+    </div>
+
+    <!-- Product grid -->
+    <div class="store-body">
+      <div class="store-section-header">
+        <h3 id="store-section-title">All Products</h3>
+        <span id="store-product-count" class="table-count"></span>
+      </div>
+      <div class="store-grid" id="store-grid"></div>
+    </div>
+
+  </div><!-- /tab-store -->
+
+  <!-- ── Floating chat widget (visible in both tabs) ── -->
+  <button id="chat-toggle" aria-label="Open chat">
+    <span id="chat-toggle-icon">💬</span>
+  </button>
+
+  <div id="chat-panel" class="chat-panel" aria-hidden="true">
+    <div class="chat-panel-header">
+      <div class="chat-panel-title">
+        <span class="chat-avatar">💬</span>
+        <div>
+          <strong>AI Support Assistant</strong>
+          <span class="chat-subtitle">Ask anything about orders or products</span>
+        </div>
+      </div>
+      <button id="chat-close" aria-label="Close chat">✕</button>
+    </div>
+
+    <div id="dp-lead-view" class="chat-body">
+      <p class="chat-intro">Before we start, please introduce yourself.</p>
+      <form id="dp-lead-form">
+        <label for="dp-name">Name</label>
+        <input type="text"  id="dp-name"  placeholder="Your name"  required autocomplete="name" />
+        <label for="dp-email">Email</label>
+        <input type="email" id="dp-email" placeholder="Your email" required autocomplete="email" />
+        <button type="submit" id="dp-start-btn">Start Chat</button>
+        <p id="dp-form-error" class="dp-error hidden"></p>
+      </form>
+      <p class="chat-hint">💡 Try: "What is the status of ORD-007?" or "Who is the top customer?"</p>
+    </div>
+
+    <div id="dp-chat-view" class="hidden">
+      <div id="dp-messages" class="dp-messages" role="log" aria-live="polite"></div>
+      <div class="dp-input-row">
+        <input type="text" id="dp-input" placeholder="Ask about orders, customers…" autocomplete="off" />
+        <button id="dp-send">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/demo.js"></script>
+</body>
+</html>

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ShopBot AI — Customer Support & Lead Gen Bot</title>
+  <link rel="stylesheet" href="/static/landing.css" />
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav class="nav">
+    <div class="nav-inner">
+      <span class="nav-logo">💬 ShopBot AI</span>
+      <a href="/demo" class="btn-nav">Try Demo →</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="badge">Portfolio Project</div>
+      <h1>AI Customer Support<br>&amp; Lead Generation Bot</h1>
+      <p class="hero-sub">
+        A LangGraph-powered chatbot that captures leads, queries live e-commerce data,
+        and answers customer questions intelligently — built with FastAPI and GPT-4o.
+      </p>
+      <a href="/demo" class="btn-hero">View Live Demo →</a>
+      <div class="hero-tags">
+        <span>Python</span>
+        <span>FastAPI</span>
+        <span>LangGraph</span>
+        <span>OpenAI GPT-4o</span>
+        <span>SQLite</span>
+      </div>
+    </div>
+
+    <!-- Decorative floating cards -->
+    <div class="hero-visual" aria-hidden="true">
+      <div class="mock-card">
+        <div class="mock-header">💬 Support Chat</div>
+        <div class="mock-msg user">What's the status of ORD-007?</div>
+        <div class="mock-msg bot">Order ORD-007 is currently <strong>Pending</strong> — placed on Apr 22.</div>
+        <div class="mock-msg user">Can you escalate this?</div>
+        <div class="mock-msg bot">Done! A human agent will follow up shortly.</div>
+      </div>
+      <div class="mock-stat-row">
+        <div class="mock-stat"><span>18</span>Orders</div>
+        <div class="mock-stat"><span>$3.4K</span>Revenue</div>
+        <div class="mock-stat"><span>4</span>Pending</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="features">
+    <div class="section-inner">
+      <p class="section-label">CAPABILITIES</p>
+      <h2 class="section-title">Everything in one bot</h2>
+      <div class="cards">
+        <div class="card">
+          <div class="card-icon">🤖</div>
+          <h3>GPT-4o Powered</h3>
+          <p>Real conversational AI that understands context, maintains history across turns, and responds naturally to any question.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">🔧</div>
+          <h3>LangGraph Agent</h3>
+          <p>ReAct agent with tool-calling — dynamically decides when to query data or search FAQs before generating a response.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">📊</div>
+          <h3>Live Data Access</h3>
+          <p>The bot reads real order and customer records, giving grounded answers like "ORD-007 is currently shipped, placed Apr 17."</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">📋</div>
+          <h3>Lead Capture</h3>
+          <p>Captures visitor name and email before the conversation starts, storing every lead in a SQLite database automatically.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section class="how">
+    <div class="section-inner">
+      <p class="section-label">ARCHITECTURE</p>
+      <h2 class="section-title">How the agent works</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <h4>Lead captured</h4>
+          <p>Visitor enters name &amp; email. Session created, lead saved to SQLite.</p>
+        </div>
+        <div class="step-arrow">→</div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <h4>Agent reads message</h4>
+          <p>LangGraph decides: answer directly, or call a tool first?</p>
+        </div>
+        <div class="step-arrow">→</div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <h4>Tool executes</h4>
+          <p>Queries orders, customers, or FAQ — result fed back to the LLM.</p>
+        </div>
+        <div class="step-arrow">→</div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <h4>Accurate reply</h4>
+          <p>LLM composes a grounded, data-backed response for the visitor.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tech stack -->
+  <section class="tech">
+    <div class="section-inner">
+      <p class="section-label">TECH STACK</p>
+      <div class="tech-pills">
+        <span>🐍 Python 3.11</span>
+        <span>⚡ FastAPI</span>
+        <span>🕸️ LangGraph</span>
+        <span>🔗 LangChain</span>
+        <span>🧠 OpenAI GPT-4o</span>
+        <span>🗄️ SQLite</span>
+        <span>🌐 HTML / CSS / JS</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta">
+    <div class="section-inner">
+      <h2>See it in action</h2>
+      <p>Explore the live demo — interact with a real dashboard and try the AI chatbot yourself.</p>
+      <a href="/demo" class="btn-hero">Open Demo →</a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <p>Built with Python · FastAPI · LangGraph · OpenAI · SQLite</p>
+  </footer>
+
+</body>
+</html>
