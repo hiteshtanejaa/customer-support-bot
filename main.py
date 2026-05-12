@@ -27,7 +27,9 @@ DB_PATH = Path("leads.db")
 STATIC_DIR = Path("static")
 
 _current_session: ContextVar[str] = ContextVar("current_session", default="")
-conversations: dict[str, list[dict]] = {}
+_current_user_name: ContextVar[str] = ContextVar("current_user_name", default="")
+# In-memory store: session_id → {"messages": [...], "name": str, "email": str}
+conversations: dict[str, dict] = {}
 
 # ── System prompts ─────────────────────────────────────────────────────────
 
@@ -182,34 +184,36 @@ def get_store_stats() -> str:
 
 
 @tool
-def get_orders(status: str = "", customer_name: str = "") -> str:
+def get_orders(status: str = "") -> str:
     """
-    List orders, optionally filtered by status (Pending/Shipped/Delivered/Cancelled)
-    or by customer name (partial match). Returns a summary of each matching order.
+    List the current user's orders, optionally filtered by status
+    (Pending/Shipped/Delivered/Cancelled).
     """
-    results = ORDERS
+    user = _current_user_name.get()
+    results = [o for o in ORDERS if user.lower() in o["customer"].lower()]
     if status:
         results = [o for o in results if o["status"].lower() == status.lower()]
-    if customer_name:
-        results = [o for o in results if customer_name.lower() in o["customer"].lower()]
     if not results:
-        return "No orders found matching those filters."
+        return f"No orders found for {user}" + (f" with status '{status}'." if status else ".")
     lines = [
-        f"{o['id']}: {o['customer']} — {o['product']} — ${o['amount']} — {o['status']} ({o['date']})"
+        f"{o['id']}: {o['product']} — ${o['amount']} — {o['status']} ({o['date']})"
         for o in results
     ]
-    return f"Found {len(results)} order(s):\n" + "\n".join(lines)
+    return f"Found {len(results)} order(s) for {user}:\n" + "\n".join(lines)
 
 
 @tool
 def get_order_details(order_id: str) -> str:
     """Look up the full details of a specific order by its ID (e.g. ORD-007)."""
+    user = _current_user_name.get()
     oid = order_id.upper().strip()
     for o in ORDERS:
         if o["id"] == oid:
+            # ── Ownership check ───────────────────────────────────────────
+            if user.lower() not in o["customer"].lower():
+                return "I can only provide details for your own orders. I don't have access to other customers' order information."
             return (
                 f"Order {o['id']}:\n"
-                f"  Customer: {o['customer']}\n"
                 f"  Product:  {o['product']}\n"
                 f"  Amount:   ${o['amount']}\n"
                 f"  Status:   {o['status']}\n"
@@ -227,19 +231,25 @@ def _mask_email(email: str) -> str:
 
 
 @tool
-def get_customer_details(customer_name: str) -> str:
-    """Look up a customer's profile and order history by name (partial match supported)."""
-    matches = [c for c in CUSTOMERS if customer_name.lower() in c["name"].lower()]
+def get_customer_details(customer_name: str = "") -> str:
+    """Look up the current user's own profile and order history."""
+    user = _current_user_name.get()
+
+    # ── Ownership check — block requests for other customers ──────────────
+    if customer_name and user.lower() not in customer_name.lower():
+        return "I can only provide your own account details. I'm not able to share other customers' information."
+
+    matches = [c for c in CUSTOMERS if user.lower() in c["name"].lower()]
     if not matches:
-        return f"No customer found matching '{customer_name}'."
+        return f"I couldn't find an account matching the name '{user}'. If you think this is an error, please contact support."
     lines = []
     for c in matches:
         cust_orders = [o for o in ORDERS if o["customer"] == c["name"]]
         order_list = ", ".join(f"{o['id']} ({o['status']})" for o in cust_orders) or "none"
         lines.append(
-            f"{c['name']} | {_mask_email(c['email'])} | {c['location']} | "
+            f"Name: {c['name']} | Location: {c['location']} | "
             f"Joined: {c['joined']} | Orders: {c['orders']} | Spent: ${c['total_spent']:,.2f}\n"
-            f"  Orders: {order_list}"
+            f"  Order history: {order_list}"
         )
     return "\n\n".join(lines)
 
@@ -356,7 +366,11 @@ def create_lead(lead: LeadIn):
     finally:
         conn.close()
     session_id = str(uuid.uuid4())
-    conversations[session_id] = []
+    conversations[session_id] = {
+        "messages": [],
+        "name":  lead.name.strip(),
+        "email": lead.email.strip().lower(),
+    }
     return {"session_id": session_id}
 
 
@@ -372,12 +386,14 @@ MAX_INPUT_CHARS = 500  # max characters per user message
 
 
 def run_agent(agent, session_id: str, message: str) -> str:
-    history = conversations.get(session_id)
-    if history is None:
+    session = conversations.get(session_id)
+    if session is None:
         raise HTTPException(status_code=404, detail="Session not found.")
 
+    history = session["messages"]
+
     # ── Rate limit ────────────────────────────────────────────────────────
-    turns_used = len(history) // 2          # each turn = 1 human + 1 ai entry
+    turns_used = len(history) // 2
     if turns_used >= MAX_TURNS:
         raise HTTPException(
             status_code=429,
@@ -394,17 +410,21 @@ def run_agent(agent, session_id: str, message: str) -> str:
     if not message:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
-    token = _current_session.set(session_id)
-    messages: list = [
+    # ── Set context vars (session + user identity for tools) ──────────────
+    token_s = _current_session.set(session_id)
+    token_u = _current_user_name.set(session["name"])
+
+    lc_messages: list = [
         HumanMessage(content=e["content"]) if e["type"] == "human" else AIMessage(content=e["content"])
         for e in history
     ]
-    messages.append(HumanMessage(content=message))
+    lc_messages.append(HumanMessage(content=message))
 
     try:
-        result = agent.invoke({"messages": messages})
+        result = agent.invoke({"messages": lc_messages})
     finally:
-        _current_session.reset(token)
+        _current_session.reset(token_s)
+        _current_user_name.reset(token_u)
 
     reply = ""
     for msg in reversed(result["messages"]):
