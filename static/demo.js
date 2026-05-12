@@ -237,7 +237,20 @@
         body: JSON.stringify({ session_id: sessionId, message: text }),
       });
       removeBubble(typingId);
-      if (!res.ok) { appendBubble('bot', 'Sorry, something went wrong.'); return; }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        if (res.status === 429) {
+          appendBubble('bot', '⚠️ You\'ve reached the message limit for this session. Please refresh the page to start a new chat.');
+          setWaiting(true); // lock the input permanently
+          return;
+        }
+        if (res.status === 400) {
+          appendBubble('bot', err.detail || 'Your message was too long. Please keep it under 500 characters.');
+          return;
+        }
+        appendBubble('bot', 'Sorry, something went wrong. Please try again.');
+        return;
+      }
       appendBubble('bot', (await res.json()).reply);
     } catch {
       removeBubble(typingId);
