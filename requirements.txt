@@ -1,7 +1,7 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-openai==1.51.0
-langgraph==0.2.28
-langchain-openai==0.2.3
-langchain-core==0.3.10
-python-dotenv==1.0.1
+fastapi
+uvicorn[standard]
+openai
+langgraph
+langchain-openai
+langchain-core
+python-dotenv
