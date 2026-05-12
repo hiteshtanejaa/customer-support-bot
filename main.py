@@ -1,7 +1,11 @@
+import os
+import smtplib
 import sqlite3
 import uuid
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -65,12 +69,71 @@ def search_faq(query: str) -> str:
     return "I don't have specific information on that topic in our FAQ."
 
 
+def _send_escalation_email(visitor_name: str, visitor_email: str, issue_summary: str) -> None:
+    """Send an email alert when a visitor escalates an issue. Fails silently so chat is never disrupted."""
+    alert_to    = os.getenv("ALERT_EMAIL")
+    gmail_pass  = os.getenv("GMAIL_APP_PASSWORD")
+    sender      = os.getenv("ALERT_EMAIL")          # send from the same Gmail
+
+    if not alert_to or not gmail_pass:
+        return  # email not configured — skip silently
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"🚨 ShopBot Escalation — {visitor_name}"
+        msg["From"]    = sender
+        msg["To"]      = alert_to
+
+        html = f"""
+        <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+          <h2 style="color:#6366f1">New Escalation — ShopBot AI</h2>
+          <table style="width:100%;border-collapse:collapse">
+            <tr><td style="padding:8px;color:#64748b;font-weight:600">Visitor</td>
+                <td style="padding:8px">{visitor_name}</td></tr>
+            <tr style="background:#f8fafc">
+                <td style="padding:8px;color:#64748b;font-weight:600">Email</td>
+                <td style="padding:8px"><a href="mailto:{visitor_email}">{visitor_email}</a></td></tr>
+            <tr><td style="padding:8px;color:#64748b;font-weight:600">Issue</td>
+                <td style="padding:8px">{issue_summary}</td></tr>
+          </table>
+          <p style="color:#94a3b8;font-size:0.8rem;margin-top:24px">Sent by ShopBot AI · Reply directly to {visitor_email}</p>
+        </div>
+        """
+        msg.attach(MIMEText(html, "html"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender, gmail_pass)
+            server.sendmail(sender, alert_to, msg.as_string())
+    except Exception:
+        pass  # never crash the chat over an email failure
+
+
 @tool
 def escalate_to_human(issue_summary: str) -> str:
     """Escalate an unresolved issue to a human agent. Call this when you cannot solve the visitor's problem."""
     session_id = _current_session.get()
+
+    # Look up visitor details from the leads table
+    visitor_name  = "Unknown"
+    visitor_email = "Unknown"
     conn = sqlite3.connect(DB_PATH)
     try:
+        row = conn.execute(
+            """SELECT l.name, l.email FROM leads l
+               INNER JOIN (
+                 SELECT rowid, name, email,
+                        ROW_NUMBER() OVER (ORDER BY captured_at DESC) as rn
+                 FROM leads
+               ) recent ON l.rowid = recent.rowid
+               WHERE recent.rn = 1"""
+        ).fetchone()
+        # Simpler fallback: get the most recently inserted lead
+        row = conn.execute(
+            "SELECT name, email FROM leads ORDER BY captured_at DESC LIMIT 1"
+        ).fetchone()
+        if row:
+            visitor_name, visitor_email = row
+
         conn.execute(
             "INSERT INTO escalations (session_id, issue_summary) VALUES (?, ?)",
             (session_id, issue_summary),
@@ -78,6 +141,10 @@ def escalate_to_human(issue_summary: str) -> str:
         conn.commit()
     finally:
         conn.close()
+
+    # Fire and forget — never blocks the chat response
+    _send_escalation_email(visitor_name, visitor_email, issue_summary)
+
     return (
         "I've flagged your issue for a human agent. "
         "Someone will follow up at the email address you provided when you started the chat."
@@ -199,6 +266,10 @@ def init_db() -> None:
                 created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Deduplication: one row per unique email address
+        conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_email ON leads(email)
+        """)
         conn.commit()
     finally:
         conn.close()
@@ -262,7 +333,7 @@ def create_lead(lead: LeadIn):
     conn = sqlite3.connect(DB_PATH)
     try:
         conn.execute(
-            "INSERT INTO leads (name, email) VALUES (?, ?)",
+            "INSERT OR IGNORE INTO leads (name, email) VALUES (?, ?)",
             (lead.name.strip(), lead.email.strip().lower()),
         )
         conn.commit()
