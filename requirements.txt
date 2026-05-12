@@ -6,3 +6,4 @@ langchain-openai
 langchain-core
 python-dotenv
 resend
+httpx

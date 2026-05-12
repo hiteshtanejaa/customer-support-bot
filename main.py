@@ -5,11 +5,12 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from pathlib import Path
 
+import httpx
 import resend
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -443,3 +444,130 @@ def chat(body: ChatIn):
 @app.post("/demo/chat")
 def demo_chat(body: ChatIn):
     return {"reply": run_agent(demo_agent, body.session_id, body.message)}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WHATSAPP INTEGRATION — Meta Cloud API
+# ══════════════════════════════════════════════════════════════════════════════
+
+WA_TOKEN     = os.getenv("WHATSAPP_TOKEN")
+WA_PHONE_ID  = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+WA_VERIFY    = os.getenv("WHATSAPP_VERIFY_TOKEN")
+processed_ids: set[str] = set()   # deduplicate Meta retries
+
+
+async def send_whatsapp_reply(phone: str, text: str) -> None:
+    """Send a text message back to the WhatsApp user via Meta Graph API."""
+    async with httpx.AsyncClient() as client:
+        await client.post(
+            f"https://graph.facebook.com/v18.0/{WA_PHONE_ID}/messages",
+            headers={"Authorization": f"Bearer {WA_TOKEN}"},
+            json={
+                "messaging_product": "whatsapp",
+                "to": phone,
+                "type": "text",
+                "text": {"body": text},
+            },
+            timeout=10,
+        )
+
+
+async def handle_whatsapp_message(phone: str, name: str, text: str) -> None:
+    """Process an incoming WhatsApp message through the agent and reply."""
+    # ── Create session for new users ──────────────────────────────────────
+    if phone not in conversations:
+        # Save as lead in DB
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            conn.execute(
+                "INSERT OR IGNORE INTO leads (name, email) VALUES (?, ?)",
+                (name, f"{phone}@whatsapp"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        conversations[phone] = {"messages": [], "name": name, "email": f"{phone}@whatsapp"}
+        # Welcome message
+        await send_whatsapp_reply(
+            phone,
+            f"Hi {name}! 👋 I'm ShopBot's AI support assistant.\n\n"
+            "I can help you with orders, shipping, returns, and more.\n"
+            "What can I help you with today?"
+        )
+
+    # ── Rate limit ────────────────────────────────────────────────────────
+    turns = len(conversations[phone]["messages"]) // 2
+    if turns >= MAX_TURNS:
+        await send_whatsapp_reply(
+            phone,
+            "You've reached the session message limit. "
+            "Please contact us at support@shopbot-demo.com for further help."
+        )
+        return
+
+    # ── Input length guard ────────────────────────────────────────────────
+    if len(text) > MAX_INPUT_CHARS:
+        await send_whatsapp_reply(phone, f"Please keep messages under {MAX_INPUT_CHARS} characters.")
+        return
+
+    # ── Run agent ─────────────────────────────────────────────────────────
+    try:
+        reply = run_agent(demo_agent, phone, text)
+    except HTTPException:
+        reply = "Sorry, something went wrong. Please try again."
+
+    await send_whatsapp_reply(phone, reply)
+
+
+# ── Webhook verification (Meta calls this once when you register the webhook) ──
+
+@app.get("/whatsapp")
+def verify_whatsapp(
+    hub_mode: str            = Query(alias="hub.mode",         default=""),
+    hub_challenge: str       = Query(alias="hub.challenge",    default=""),
+    hub_verify_token: str    = Query(alias="hub.verify_token", default=""),
+):
+    if hub_mode == "subscribe" and hub_verify_token == WA_VERIFY:
+        return PlainTextResponse(hub_challenge)
+    raise HTTPException(status_code=403, detail="Verification failed.")
+
+
+# ── Incoming messages from WhatsApp users ──────────────────────────────────
+
+@app.post("/whatsapp")
+async def whatsapp_webhook(request: Request, background: BackgroundTasks):
+    body = await request.json()
+
+    try:
+        entry   = body["entry"][0]
+        change  = entry["changes"][0]["value"]
+
+        # Ignore status updates (delivered/read receipts) — only handle messages
+        if "messages" not in change:
+            return {"status": "ok"}
+
+        msg      = change["messages"][0]
+        msg_id   = msg["id"]
+        phone    = msg["from"]
+        msg_type = msg.get("type", "")
+
+        # ── Deduplicate Meta retries ──────────────────────────────────────
+        if msg_id in processed_ids:
+            return {"status": "ok"}
+        processed_ids.add(msg_id)
+
+        # ── Only handle text messages ─────────────────────────────────────
+        if msg_type != "text":
+            await send_whatsapp_reply(phone, "I can only handle text messages for now. Please type your question.")
+            return {"status": "ok"}
+
+        text = msg["text"]["body"].strip()
+        name = change.get("contacts", [{}])[0].get("profile", {}).get("name", "User")
+
+        # Process in background so Meta gets 200 immediately (avoids retries)
+        background.add_task(handle_whatsapp_message, phone, name, text)
+
+    except (KeyError, IndexError):
+        pass  # malformed payload — ignore silently
+
+    return {"status": "ok"}
