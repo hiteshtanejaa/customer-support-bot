@@ -1,9 +1,13 @@
+import logging
 import os
 import sqlite3
 import uuid
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from pathlib import Path
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("shopbot")
 
 import httpx
 import resend
@@ -458,8 +462,9 @@ processed_ids: set[str] = set()   # deduplicate Meta retries
 
 async def send_whatsapp_reply(phone: str, text: str) -> None:
     """Send a text message back to the WhatsApp user via Meta Graph API."""
+    logger.info(f"[WA] Sending reply to {phone}: {text[:60]}...")
     async with httpx.AsyncClient() as client:
-        await client.post(
+        res = await client.post(
             f"https://graph.facebook.com/v18.0/{WA_PHONE_ID}/messages",
             headers={"Authorization": f"Bearer {WA_TOKEN}"},
             json={
@@ -470,10 +475,13 @@ async def send_whatsapp_reply(phone: str, text: str) -> None:
             },
             timeout=10,
         )
+        if res.status_code != 200:
+            logger.error(f"[WA] Meta API error {res.status_code}: {res.text}")
 
 
 async def handle_whatsapp_message(phone: str, name: str, text: str) -> None:
     """Process an incoming WhatsApp message through the agent and reply."""
+    logger.info(f"[WA] Incoming from {phone} ({name}): {text}")
     # ── Create session for new users ──────────────────────────────────────
     if phone not in conversations:
         # Save as lead in DB
@@ -513,8 +521,13 @@ async def handle_whatsapp_message(phone: str, name: str, text: str) -> None:
     # ── Run agent ─────────────────────────────────────────────────────────
     try:
         reply = run_agent(demo_agent, phone, text)
-    except HTTPException:
+        logger.info(f"[WA] Agent reply for {phone}: {reply[:60]}...")
+    except HTTPException as e:
+        logger.error(f"[WA] HTTPException for {phone}: {e.detail}")
         reply = "Sorry, something went wrong. Please try again."
+    except Exception as e:
+        logger.error(f"[WA] Unexpected error for {phone}: {e}")
+        reply = "Sorry, I encountered an error. Please try again."
 
     await send_whatsapp_reply(phone, reply)
 
