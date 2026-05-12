@@ -1,12 +1,11 @@
 import os
-import smtplib
 import sqlite3
 import uuid
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from pathlib import Path
+
+import resend
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -80,40 +79,37 @@ def search_faq(query: str) -> str:
 
 
 def _send_escalation_email(visitor_name: str, visitor_email: str, issue_summary: str) -> None:
-    """Send an email alert when a visitor escalates an issue. Fails silently so chat is never disrupted."""
-    alert_to    = os.getenv("ALERT_EMAIL")
-    gmail_pass  = os.getenv("GMAIL_APP_PASSWORD")
-    sender      = os.getenv("ALERT_EMAIL")          # send from the same Gmail
+    """Send an email alert via Resend when a visitor escalates. Fails silently so chat is never disrupted."""
+    api_key  = os.getenv("RESEND_API_KEY")
+    alert_to = os.getenv("ALERT_EMAIL")
 
-    if not alert_to or not gmail_pass:
-        return  # email not configured — skip silently
+    if not api_key or not alert_to:
+        return  # not configured — skip silently
 
     try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"🚨 ShopBot Escalation — {visitor_name}"
-        msg["From"]    = sender
-        msg["To"]      = alert_to
-
-        html = f"""
-        <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
-          <h2 style="color:#6366f1">New Escalation — ShopBot AI</h2>
-          <table style="width:100%;border-collapse:collapse">
-            <tr><td style="padding:8px;color:#64748b;font-weight:600">Visitor</td>
-                <td style="padding:8px">{visitor_name}</td></tr>
-            <tr style="background:#f8fafc">
-                <td style="padding:8px;color:#64748b;font-weight:600">Email</td>
-                <td style="padding:8px"><a href="mailto:{visitor_email}">{visitor_email}</a></td></tr>
-            <tr><td style="padding:8px;color:#64748b;font-weight:600">Issue</td>
-                <td style="padding:8px">{issue_summary}</td></tr>
-          </table>
-          <p style="color:#94a3b8;font-size:0.8rem;margin-top:24px">Sent by ShopBot AI · Reply directly to {visitor_email}</p>
-        </div>
-        """
-        msg.attach(MIMEText(html, "html"))
-
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(sender, gmail_pass)
-            server.sendmail(sender, alert_to, msg.as_string())
+        resend.api_key = api_key
+        resend.Emails.send({
+            "from":    "ShopBot AI <onboarding@resend.dev>",
+            "to":      [alert_to],
+            "subject": f"🚨 ShopBot Escalation — {visitor_name}",
+            "html": f"""
+            <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+              <h2 style="color:#6366f1">New Escalation — ShopBot AI</h2>
+              <table style="width:100%;border-collapse:collapse">
+                <tr><td style="padding:8px;color:#64748b;font-weight:600">Visitor</td>
+                    <td style="padding:8px">{visitor_name}</td></tr>
+                <tr style="background:#f8fafc">
+                    <td style="padding:8px;color:#64748b;font-weight:600">Email</td>
+                    <td style="padding:8px"><a href="mailto:{visitor_email}">{visitor_email}</a></td></tr>
+                <tr><td style="padding:8px;color:#64748b;font-weight:600">Issue</td>
+                    <td style="padding:8px">{issue_summary}</td></tr>
+              </table>
+              <p style="color:#94a3b8;font-size:0.8rem;margin-top:24px">
+                Sent by ShopBot AI · Reply directly to {visitor_email}
+              </p>
+            </div>
+            """,
+        })
     except Exception:
         pass  # never crash the chat over an email failure
 
